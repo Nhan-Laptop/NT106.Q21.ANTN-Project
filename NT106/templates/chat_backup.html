@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delta Chat Web</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h3>Xin chào, <span id="current-user">{{ user_email }}</span></h3>
+            <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i> Thoát</a>
+        </div>
+
+        <div class="chat-box" id="chat-box">
+            <div class="loading-msg">Đang tải tin nhắn từ Gmail...</div>
+        </div>
+
+        <div class="input-area">
+            <form id="send-form" enctype="multipart/form-data">
+                <input type="email" id="recipient" name="recipient" placeholder="Gửi tới (email)..." required>
+                <input type="text" id="subject" name="subject" placeholder="Chủ đề..." value="[Delta-Chat]" required>
+                
+                <div class="input-row">
+                    <label for="attachment" class="file-btn">
+                        <i class="fa-solid fa-paperclip"></i>
+                    </label>
+                    <input type="file" id="attachment" name="attachment" style="display: none;">
+                    
+                    <textarea id="msg-body" name="body" placeholder="Nhập tin nhắn..."></textarea>
+                    
+                    <button type="submit" id="btn-send"><i class="fa-solid fa-paper-plane"></i></button>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                    <div id="file-name-display" style="font-size: 12px; color: green;"></div>
+                    <label style="font-size: 13px; color: #666; cursor: pointer;">
+                        <input type="checkbox" id="encrypt-toggle" name="encrypt" value="true">
+                        🔒 Mã hóa tin nhắn
+                    </label>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/chat.js"></script>
+</body>
+</html>

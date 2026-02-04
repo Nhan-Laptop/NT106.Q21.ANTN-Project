@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delta Chat Web</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: #f0f2f5;
+        }
+        
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        /* ===== SIDEBAR (Left) ===== */
+        .sidebar {
+            width: 350px;
+            background: white;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar-header {
+            padding: 15px 20px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .sidebar-header h3 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .sidebar-header .user-email {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+        
+        .btn-logout {
+            background: rgba(255,255,255,0.2);
+            padding: 8px 15px;
+            border-radius: 6px;
+            color: white;
+            text-decoration: none;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+        
+        .btn-logout:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .search-box {
+            padding: 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .search-box input {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 20px;
+            font-size: 14px;
+            outline: none;
+        }
+        
+        .search-box input:focus {
+            border-color: #667eea;
+        }
+        
+        .conversations-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+        .conversation-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .conversation-item:hover {
+            background: #f5f5f5;
+        }
+        
+        .conversation-item.active {
+            background: #e8f0fe;
+            border-left: 3px solid #667eea;
+        }
+        
+        .conversation-avatar {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        
+        .conversation-info {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .conversation-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .conversation-preview {
+            font-size: 13px;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .conversation-meta {
+            text-align: right;
+            flex-shrink: 0;
+        }
+        
+        .conversation-time {
+            font-size: 11px;
+            color: #999;
+            margin-bottom: 5px;
+        }
+        
+        .unread-badge {
+            background: #667eea;
+            color: white;
+            border-radius: 10px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        
+        /* ===== MAIN CHAT AREA (Right) ===== */
+        .chat-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #fafafa;
+        }
+        
+        .chat-header {
+            padding: 15px 20px;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .chat-header-info h4 {
+            color: #333;
+            font-size: 16px;
+            margin-bottom: 2px;
+        }
+        
+        .chat-header-info p {
+            font-size: 12px;
+            color: #999;
+        }
+        
+        .chat-actions button {
+            background: none;
+            border: none;
+            color: #667eea;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 8px;
+            margin-left: 10px;
+            transition: all 0.2s;
+        }
+        
+        .chat-actions button:hover {
+            color: #764ba2;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .message {
+            max-width: 60%;
+            padding: 10px 15px;
+            border-radius: 12px;
+            word-wrap: break-word;
+            animation: fadeIn 0.3s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message.sent {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .message.received {
+            align-self: flex-start;
+            background: white;
+            color: #333;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        
+        .message-header {
+            font-size: 11px;
+            opacity: 0.8;
+            margin-bottom: 4px;
+        }
+        
+        .message-body {
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .message-time {
+            font-size: 10px;
+            opacity: 0.7;
+            margin-top: 4px;
+            text-align: right;
+        }
+        
+        .empty-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+        }
+        
+        .empty-state i {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+        
+        .empty-state h3 {
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .empty-state p {
+            font-size: 14px;
+        }
+        
+        /* ===== INPUT AREA ===== */
+        .input-area {
+            padding: 15px 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .new-chat-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .new-chat-form input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .new-chat-form button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .message-input-row {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+        
+        .attach-btn {
+            width: 40px;
+            height: 40px;
+            border: none;
+            background: #f0f0f0;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #667eea;
+            font-size: 18px;
+            transition: all 0.2s;
+        }
+        
+        .attach-btn:hover {
+            background: #e0e0e0;
+        }
+        
+        .message-textarea {
+            flex: 1;
+            padding: 10px 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 20px;
+            font-size: 14px;
+            resize: none;
+            font-family: inherit;
+            max-height: 100px;
+        }
+        
+        .message-textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .send-btn {
+            width: 40px;
+            height: 40px;
+            border: none;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+        
+        .send-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .encrypt-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .loading-msg {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+        }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div>
+                    <h3>💬 Delta Chat</h3>
+                    <div class="user-email">{{ user_email }}</div>
+                    <div class="user-email" id="my-user-id" style="font-size: 10px; opacity: 0.7; margin-top: 2px; cursor: pointer;" title="Click to copy">
+                        ID: <span id="my-id-value">Loading...</span>
+                    </div>
+                </div>
+                <a href="/logout" class="btn-logout">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                </a>
+            </div>
+            
+            <div class="search-box">
+                <input type="text" id="search-conversations" placeholder="🔍 Tìm kiếm cuộc hội thoại...">
+            </div>
+            
+            <!-- NEW: Tab navigation -->
+            <div style="display: flex; border-bottom: 1px solid #e0e0e0;">
+                <button id="tab-conversations" class="tab-btn active" onclick="switchTab('conversations')" style="flex: 1; padding: 12px; background: none; border: none; border-bottom: 2px solid #667eea; color: #667eea; font-weight: 600; cursor: pointer;">
+                    💬 Conversations
+                </button>
+                <button id="tab-add-friend" class="tab-btn" onclick="switchTab('add-friend')" style="flex: 1; padding: 12px; background: none; border: none; border-bottom: 2px solid transparent; color: #999; font-weight: 600; cursor: pointer;">
+                    ➕ Add Friend
+                </button>
+            </div>
+            
+            <div class="conversations-list" id="conversations-list">
+                <div class="loading-msg">Đang tải cuộc hội thoại...</div>
+            </div>
+            
+            <!-- NEW: Add Friend Form -->
+            <div class="conversations-list" id="add-friend-panel" style="display: none; padding: 20px;">
+                <div style="margin-bottom: 20px;">
+                    <h4 style="margin-bottom: 10px; color: #333;">🔍 Thêm bạn bằng User ID</h4>
+                    <p style="font-size: 12px; color: #666; margin-bottom: 15px;">
+                        Nhập User ID của người bạn muốn chat
+                    </p>
+                    
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="search-user-id" placeholder="Nhập User ID (VD: a3f4e8b9c2d1)" 
+                               style="flex: 1; padding: 10px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 14px;">
+                        <button onclick="searchUserById()" style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                            <i class="fa-solid fa-search"></i> Tìm
+                        </button>
+                    </div>
+                    
+                    <div id="search-result" style="margin-top: 15px;"></div>
+                </div>
+                
+                <div style="border-top: 1px solid #e0e0e0; padding-top: 20px; margin-top: 20px;">
+                    <h4 style="margin-bottom: 10px; color: #333;">📋 Your User ID</h4>
+                    <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+                        Chia sẻ ID này để người khác thêm bạn
+                    </p>
+                    <div style="display: flex; align-items: center; gap: 10px; padding: 12px; background: #f5f5f5; border-radius: 6px;">
+                        <code id="copy-user-id" style="flex: 1; font-size: 14px; font-weight: 600; color: #667eea;">
+                            Loading...
+                        </code>
+                        <button onclick="copyMyId()" style="background: #667eea; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            <i class="fa-solid fa-copy"></i> Copy
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- MAIN CHAT AREA -->
+        <div class="chat-main">
+            <div class="chat-header" id="chat-header" style="display: none;">
+                <div class="chat-header-info">
+                    <h4 id="current-chat-name">Chọn một cuộc hội thoại</h4>
+                    <p id="current-chat-email"></p>
+                </div>
+                <div class="chat-actions">
+                    <button title="Tìm kiếm"><i class="fa-solid fa-magnifying-glass"></i></button>
+                    <button title="Thêm tùy chọn"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                </div>
+            </div>
+            
+            <div class="chat-messages" id="chat-messages">
+                <div class="empty-state">
+                    <i class="fa-solid fa-comments"></i>
+                    <h3>Delta Chat</h3>
+                    <p>Chọn một cuộc hội thoại để bắt đầu chat</p>
+                </div>
+            </div>
+            
+            <div class="input-area" id="input-area" style="display: none;">
+                <div class="new-chat-form" id="new-chat-form">
+                    <input type="email" id="new-recipient" placeholder="Email người nhận mới...">
+                    <button type="button" id="btn-new-chat">Bắt đầu chat</button>
+                </div>
+                
+                <form id="send-form">
+                    <div class="message-input-row">
+                        <label for="attachment" class="attach-btn">
+                            <i class="fa-solid fa-paperclip"></i>
+                        </label>
+                        <input type="file" id="attachment" name="attachment" style="display: none;">
+                        
+                        <textarea 
+                            id="msg-body" 
+                            name="body" 
+                            class="message-textarea"
+                            placeholder="Nhập tin nhắn... (hoặc Ctrl+V để paste ảnh)"
+                            rows="1"></textarea>
+                        
+                        <button type="submit" class="send-btn" id="btn-send">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    
+                    <div id="file-preview"></div>
+                    
+                    <div class="encrypt-option">
+                        <input type="checkbox" id="encrypt-toggle" name="encrypt" value="true">
+                        <label for="encrypt-toggle">
+                            <i class="fa-solid fa-lock"></i> Mã hóa tin nhắn (E2EE)
+                        </label>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Global variables
+        const currentUserEmail = "{{ user_email }}";
+        let currentChatEmail = null;
+        let allMessages = [];
+        let conversations = {};
+        const socket = io();
+        
+        // Elements
+        const conversationsList = document.getElementById('conversations-list');
+        const chatMessages = document.getElementById('chat-messages');
+        const chatHeader = document.getElementById('chat-header');
+        const inputArea = document.getElementById('input-area');
+        const msgBody = document.getElementById('msg-body');
+        const sendForm = document.getElementById('send-form');
+        const newRecipientInput = document.getElementById('new-recipient');
+        const btnNewChat = document.getElementById('btn-new-chat');
+        
+        // Load conversations on page load
+        loadConversations();
+        loadMessages();
+        loadMyUserId();  // NEW: Load my user ID
+        
+        // Auto-resize textarea
+        msgBody.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+        
+        // Paste image handler
+        msgBody.addEventListener('paste', function(e) {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            
+            // Find image in clipboard
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    e.preventDefault();
+                    
+                    const blob = items[i].getAsFile();
+                    const timestamp = Date.now();
+                    const fileName = `pasted-image-${timestamp}.png`;
+                    
+                    // Create File object from blob
+                    const file = new File([blob], fileName, { type: blob.type });
+                    
+                    // Set to file input
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(file);
+                    document.getElementById('attachment').files = dataTransfer.files;
+                    
+                    // Trigger preview
+                    showFilePreview(file);
+                    
+                    // Show notification
+                    const preview = document.getElementById('file-preview');
+                    const notif = document.createElement('div');
+                    notif.style.cssText = 'color: #667eea; font-size: 12px; margin-top: 4px;';
+                    notif.innerHTML = '<i class="fa-solid fa-check-circle"></i> Đã paste ảnh! Nhấn Enter để gửi.';
+                    preview.appendChild(notif);
+                    setTimeout(() => notif.remove(), 3000);
+                    
+                    break;
+                }
+            }
+        });
+        
+        // Show file preview function (reusable)
+        function showFilePreview(file) {
+            const preview = document.getElementById('file-preview');
+            const fileSize = (file.size / 1024).toFixed(2);
+            const isImage = file.type.startsWith('image/');
+            
+            let previewHTML = `
+                <div style="display: flex; align-items: center; gap: 8px; padding: 8px; background: #e8f0fe; border-radius: 6px; margin-top: 8px;">
+                    <i class="fa-solid fa-${isImage ? 'image' : 'file'}" style="color: #667eea;"></i>
+                    <span style="flex: 1; font-size: 13px;">${file.name} (${fileSize} KB)</span>
+                    <button type="button" onclick="clearFile()" style="background: none; border: none; color: #999; cursor: pointer;">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            `;
+            
+            // Show image thumbnail for pasted images
+            if (isImage) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewHTML = `
+                        <div style="padding: 8px; background: #e8f0fe; border-radius: 6px; margin-top: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <i class="fa-solid fa-image" style="color: #667eea;"></i>
+                                <span style="flex: 1; font-size: 13px;">${file.name} (${fileSize} KB)</span>
+                                <button type="button" onclick="clearFile()" style="background: none; border: none; color: #999; cursor: pointer;">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+                            <img src="${e.target.result}" style="max-width: 200px; max-height: 150px; border-radius: 4px; display: block;">
+                        </div>
+                    `;
+                    preview.innerHTML = previewHTML;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                preview.innerHTML = previewHTML;
+            }
+        }
+        
+        // File input preview
+        document.getElementById('attachment').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                showFilePreview(file);
+            } else {
+                document.getElementById('file-preview').innerHTML = '';
+            }
+        });
+        
+        // Clear file function
+        window.clearFile = function() {
+            document.getElementById('attachment').value = '';
+            document.getElementById('file-preview').innerHTML = '';
+        };
+        
+        // Start new chat
+        btnNewChat.addEventListener('click', function() {
+            const email = newRecipientInput.value.trim();
+            if (email && email.includes('@')) {
+                selectConversation(email);
+                newRecipientInput.value = '';
+            }
+        });
+        
+        // Send message
+        sendForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            if (!currentChatEmail) {
+                alert('Vui lòng chọn người nhận!');
+                return;
+            }
+            
+            const message = msgBody.value.trim();
+            const attachment = document.getElementById('attachment').files[0];
+            
+            // Allow sending if either message OR attachment exists
+            if (!message && !attachment) {
+                alert('Vui lòng nhập tin nhắn hoặc chọn file!');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('recipient', currentChatEmail);
+            formData.append('subject', '[Delta-Chat]');
+            formData.append('body', message || '[File đính kèm]');
+            formData.append('encrypt', document.getElementById('encrypt-toggle').checked);
+            
+            if (attachment) {
+                formData.append('attachment', attachment);
+            }
+            
+            try {
+                const response = await fetch('/api/send', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    msgBody.value = '';
+                    msgBody.style.height = 'auto';
+                    document.getElementById('attachment').value = '';
+                    document.getElementById('file-preview').innerHTML = '';
+                    
+                    // Add message to UI immediately
+                    addMessageToUI({
+                        sender: currentUserEmail,
+                        recipient: currentChatEmail,
+                        body: message || attachment.name,
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    // Reload messages after a short delay
+                    setTimeout(loadMessages, 500);
+                } else {
+                    alert('Lỗi: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Lỗi khi gửi tin nhắn!');
+            }
+        });
+        
+        // Load conversations
+        async function loadConversations() {
+            try {
+                const response = await fetch('/api/get_messages');
+                allMessages = await response.json();
+                
+                // Build conversations from messages
+                conversations = {};
+                
+                allMessages.forEach(msg => {
+                    const otherEmail = msg.sender === currentUserEmail ? msg.recipient : msg.sender;
+                    
+                    if (!conversations[otherEmail]) {
+                        conversations[otherEmail] = {
+                            email: otherEmail,
+                            name: otherEmail.split('@')[0],
+                            messages: [],
+                            lastMessage: '',
+                            lastTime: ''
+                        };
+                    }
+                    
+                    conversations[otherEmail].messages.push(msg);
+                    conversations[otherEmail].lastMessage = msg.body;
+                    conversations[otherEmail].lastTime = formatTime(msg.timestamp);
+                });
+                
+                renderConversations();
+            } catch (error) {
+                console.error('Error loading conversations:', error);
+                conversationsList.innerHTML = '<div class="loading-msg">Lỗi tải cuộc hội thoại</div>';
+            }
+        }
+        
+        // NEW: Load all users
+        async function loadAllUsers() {
+            try {
+                const response = await fetch('/api/users');
+                const users = await response.json();
+                
+                const usersList = document.getElementById('users-list');
+                
+                if (users.length === 0) {
+                    usersList.innerHTML = `
+                        <div style="padding: 40px 20px; text-align: center; color: #999;">
+                            <i class="fa-solid fa-user-plus" style="font-size: 48px; opacity: 0.3; margin-bottom: 15px; display: block;"></i>
+                            <p>Chưa có người dùng nào khác</p>
+                            <p style="font-size: 12px; margin-top: 10px;">Đăng ký thêm tài khoản để bắt đầu chat!</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = '';
+                users.forEach(user => {
+                    const initial = user.username ? user.username[0].toUpperCase() : user.email[0].toUpperCase();
+                    html += `
+                        <div class="conversation-item" onclick="startChatWithUser('${user.email}', '${user.username}')">
+                            <div class="conversation-avatar">${initial}</div>
+                            <div class="conversation-info">
+                                <div class="conversation-name">${user.username || user.email}</div>
+                                <div class="conversation-preview">${user.email}</div>
+                            </div>
+                            <div class="conversation-meta">
+                                <button style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                    <i class="fa-solid fa-comment"></i> Chat
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                usersList.innerHTML = html;
+            } catch (error) {
+                console.error('Error loading users:', error);
+                document.getElementById('users-list').innerHTML = '<div class="loading-msg">Lỗi tải danh sách người dùng</div>';
+            }
+        }
+        
+        // NEW: Start chat with user
+        window.startChatWithUser = function(email, username) {
+            currentChatEmail = email;
+            
+            // Switch to conversations tab
+            switchTab('conversations');
+            
+            // Select or create conversation
+            if (!conversations[email]) {
+                conversations[email] = {
+                    email: email,
+                    name: username || email.split('@')[0],
+                    messages: [],
+                    lastMessage: '',
+                    lastTime: ''
+                };
+                renderConversations();
+            }
+            
+            selectConversation(email);
+        };
+        
+        // NEW: Switch tabs
+        window.switchTab = function(tab) {
+            const conversationsTab = document.getElementById('tab-conversations');
+            const usersTab = document.getElementById('tab-users');
+            const conversationsList = document.getElementById('conversations-list');
+            const usersList = document.getElementById('users-list');
+            
+            if (tab === 'conversations') {
+                conversationsTab.classList.add('active');
+                conversationsTab.style.borderBottom = '2px solid #667eea';
+                conversationsTab.style.color = '#667eea';
+                usersTab.classList.remove('active');
+                usersTab.style.borderBottom = '2px solid transparent';
+                usersTab.style.color = '#999';
+                conversationsList.style.display = 'block';
+                usersList.style.display = 'none';
+            } else {
+                usersTab.classList.add('active');
+                usersTab.style.borderBottom = '2px solid #667eea';
+                usersTab.style.color = '#667eea';
+                conversationsTab.classList.remove('active');
+                conversationsTab.style.borderBottom = '2px solid transparent';
+                conversationsTab.style.color = '#999';
+                conversationsList.style.display = 'none';
+                usersList.style.display = 'block';
+                
+                // Load users when tab opened
+                loadAllUsers();
+            }
+        };
+        
+        // Render conversations list
+        function renderConversations() {
+            const convArray = Object.values(conversations);
+            
+            if (convArray.length === 0) {
+                conversationsList.innerHTML = '<div class="loading-msg">Chưa có cuộc hội thoại nào</div>';
+                return;
+            }
+            
+            conversationsList.innerHTML = convArray.map(conv => `
+                <div class="conversation-item" data-email="${conv.email}" onclick="selectConversation('${conv.email}')">
+                    <div class="conversation-avatar">${conv.name.charAt(0).toUpperCase()}</div>
+                    <div class="conversation-info">
+                        <div class="conversation-name">${conv.name}</div>
+                        <div class="conversation-preview">${truncate(conv.lastMessage, 40)}</div>
+                    </div>
+                    <div class="conversation-meta">
+                        <div class="conversation-time">${conv.lastTime}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Select conversation
+        function selectConversation(email) {
+            currentChatEmail = email;
+            
+            // Update active state
+            document.querySelectorAll('.conversation-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.email === email) {
+                    item.classList.add('active');
+                }
+            });
+            
+            // Show chat header and input
+            chatHeader.style.display = 'flex';
+            inputArea.style.display = 'block';
+            
+            // Update header
+            document.getElementById('current-chat-name').textContent = email.split('@')[0];
+            document.getElementById('current-chat-email').textContent = email;
+            
+            // Load messages for this conversation
+            loadMessagesForConversation(email);
+        }
+        
+        // Load messages for specific conversation
+        function loadMessagesForConversation(email) {
+            const messages = conversations[email]?.messages || [];
+            
+            chatMessages.innerHTML = '';
+            
+            if (messages.length === 0) {
+                chatMessages.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fa-solid fa-message"></i>
+                        <h3>Chưa có tin nhắn</h3>
+                        <p>Gửi tin nhắn đầu tiên cho ${email}</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            messages.forEach(msg => addMessageToUI(msg));
+            scrollToBottom();
+        }
+        
+        // Add message to UI
+        function addMessageToUI(msg) {
+            const isSent = msg.sender === currentUserEmail;
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
+            
+            // Check if message contains S3 image URL
+            const imageUrlPattern = /https:\/\/[^\s]+\.(jpg|jpeg|png|gif|webp)/gi;
+            const s3UrlPattern = /https:\/\/[^\s]+\.s3\.[^\s]+\.amazonaws\.com\/[^\s]+/gi;
+            let body = msg.body;
+            
+            // Replace S3 URLs with images
+            const s3Urls = body.match(s3UrlPattern);
+            if (s3Urls && s3Urls.length > 0) {
+                s3Urls.forEach(url => {
+                    body = body.replace(url, `<br><a href="${url}" target="_blank"><img src="${url}" style="max-width: 300px; max-height: 300px; border-radius: 8px; margin-top: 8px; cursor: pointer;" alt="Image"/></a>`);
+                });
+            } else {
+                // Check for other image URLs
+                const imageUrls = body.match(imageUrlPattern);
+                if (imageUrls && imageUrls.length > 0) {
+                    imageUrls.forEach(url => {
+                        body = body.replace(url, `<br><a href="${url}" target="_blank"><img src="${url}" style="max-width: 300px; max-height: 300px; border-radius: 8px; margin-top: 8px; cursor: pointer;" alt="Image"/></a>`);
+                    });
+                }
+            }
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">${isSent ? 'Bạn' : msg.sender.split('@')[0]}</div>
+                <div class="message-body">${body}</div>
+                <div class="message-time">${formatTime(msg.timestamp)}</div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+        }
+        
+        // NEW: Switch tabs
+        window.switchTab = function(tab) {
+            const conversationsTab = document.getElementById('tab-conversations');
+            const addFriendTab = document.getElementById('tab-add-friend');
+            const conversationsList = document.getElementById('conversations-list');
+            const addFriendPanel = document.getElementById('add-friend-panel');
+            
+            if (tab === 'conversations') {
+                conversationsTab.classList.add('active');
+                conversationsTab.style.borderBottom = '2px solid #667eea';
+                conversationsTab.style.color = '#667eea';
+                addFriendTab.classList.remove('active');
+                addFriendTab.style.borderBottom = '2px solid transparent';
+                addFriendTab.style.color = '#999';
+                conversationsList.style.display = 'block';
+                addFriendPanel.style.display = 'none';
+            } else if (tab === 'add-friend') {
+                addFriendTab.classList.add('active');
+                addFriendTab.style.borderBottom = '2px solid #667eea';
+                addFriendTab.style.color = '#667eea';
+                conversationsTab.classList.remove('active');
+                conversationsTab.style.borderBottom = '2px solid transparent';
+                conversationsTab.style.color = '#999';
+                conversationsList.style.display = 'none';
+                addFriendPanel.style.display = 'block';
+                
+                // Update copy-user-id display
+                loadMyUserId();
+            }
+        };
+        
+        // NEW: Load my user ID
+        async function loadMyUserId() {
+            try {
+                const response = await fetch('/api/user/my_id');
+                const data = await response.json();
+                
+                if (data.user_id) {
+                    // Update in header
+                    document.getElementById('my-id-value').textContent = data.user_id;
+                    
+                    // Update in add friend panel
+                    document.getElementById('copy-user-id').textContent = data.user_id;
+                    
+                    // Make header ID clickable to copy
+                    document.getElementById('my-user-id').onclick = function() {
+                        copyMyId();
+                    };
+                }
+            } catch (error) {
+                console.error('Error loading user ID:', error);
+            }
+        }
+        
+        // NEW: Copy my user ID
+        window.copyMyId = function(event) {
+            const userIdText = document.getElementById('copy-user-id').textContent;
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(userIdText).then(() => {
+                // Show feedback
+                const btn = event ? event.target.closest('button') : null;
+                if (btn) {
+                    const originalHTML = btn.innerHTML;
+                    btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+                    btn.style.background = '#4caf50';
+                    
+                    setTimeout(() => {
+                        btn.innerHTML = originalHTML;
+                        btn.style.background = '#667eea';
+                    }, 2000);
+                } else {
+                    alert('✅ Copied to clipboard: ' + userIdText);
+                }
+            }).catch(err => {
+                alert('Lỗi copy: ' + err);
+            });
+        };
+        
+        // NEW: Search user by ID
+        window.searchUserById = async function() {
+            const searchInput = document.getElementById('search-user-id');
+            const searchId = searchInput.value.trim();
+            const resultDiv = document.getElementById('search-result');
+            
+            if (!searchId) {
+                resultDiv.innerHTML = '<p style="color: #f44336; font-size: 13px;">❌ Vui lòng nhập User ID</p>';
+                return;
+            }
+            
+            // Show loading
+            resultDiv.innerHTML = '<p style="color: #999; font-size: 13px;">🔍 Đang tìm kiếm...</p>';
+            
+            try {
+                const response = await fetch('/api/user/find_by_id', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({user_id: searchId})
+                });
+                
+                const data = await response.json();
+                
+                if (data.found) {
+                    // User found!
+                    resultDiv.innerHTML = `
+                        <div style="padding: 15px; background: #e8f5e9; border-radius: 8px; border: 1px solid #4caf50;">
+                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
+                                <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
+                                    ${data.username[0].toUpperCase()}
+                                </div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; color: #333;">${data.username}</div>
+                                    <div style="font-size: 12px; color: #666;">${data.email}</div>
+                                </div>
+                            </div>
+                            <button onclick="addFriend('${data.user_id}')" style="width: 100%; background: #4caf50; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                <i class="fa-solid fa-user-plus"></i> Thêm bạn và bắt đầu chat
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = '<p style="color: #f44336; font-size: 13px;">❌ ' + (data.error || 'Không tìm thấy user') + '</p>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<p style="color: #f44336; font-size: 13px;">❌ Lỗi: ' + error.message + '</p>';
+            }
+        };
+        
+        // NEW: Add friend
+        window.addFriend = async function(userId) {
+            const resultDiv = document.getElementById('search-result');
+            
+            try {
+                resultDiv.innerHTML = '<p style="color: #999; font-size: 13px;">⏳ Đang thêm bạn...</p>';
+                
+                const response = await fetch('/api/user/add_friend', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({user_id: userId})
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196f3;">
+                            <p style="color: #1976d2; font-weight: 600; margin-bottom: 10px;">
+                                ✅ Đã thêm ${data.friend.username} làm bạn!
+                            </p>
+                            <button onclick="startChatWithFriend('${data.friend.email}', '${data.friend.username}')" style="width: 100%; background: #2196f3; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                <i class="fa-solid fa-comment"></i> Bắt đầu chat ngay
+                            </button>
+                        </div>
+                    `;
+                    
+                    // Clear search input
+                    document.getElementById('search-user-id').value = '';
+                    
+                    // Reload conversations
+                    loadConversations();
+                } else {
+                    resultDiv.innerHTML = '<p style="color: #f44336; font-size: 13px;">❌ ' + (data.error || 'Lỗi thêm bạn') + '</p>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<p style="color: #f44336; font-size: 13px;">❌ Lỗi: ' + error.message + '</p>';
+            }
+        };
+        
+        // NEW: Start chat with friend
+        window.startChatWithFriend = function(email, username) {
+            // Switch to conversations tab
+            switchTab('conversations');
+            
+            // Select conversation
+            selectConversation(email);
+        };
+        
+        // Load all messages
+        async function loadMessages() {
+            await loadConversations();
+        }
+        
+        // Utility functions
+        function formatTime(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = now - date;
+            
+            if (diff < 60000) return 'Vừa xong';
+            if (diff < 3600000) return Math.floor(diff / 60000) + ' phút trước';
+            if (diff < 86400000) return Math.floor(diff / 3600000) + ' giờ trước';
+            
+            return date.toLocaleDateString('vi-VN');
+        }
+        
+        function truncate(str, length) {
+            if (!str) return '';
+            return str.length > length ? str.substring(0, length) + '...' : str;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function scrollToBottom() {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // SocketIO
+        socket.on('connect', function() {
+            console.log('Connected to WebSocket');
+        });
+        
+        socket.on('new_message', function(data) {
+            console.log('New message:', data);
+            loadMessages();
+        });
+        
+        // Auto-refresh every 5 seconds
+        setInterval(loadMessages, 5000);
+    </script>
+</body>
+</html>

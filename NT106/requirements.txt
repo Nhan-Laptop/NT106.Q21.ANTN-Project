@@ -1,0 +1,21 @@
+Flask==2.3.3
+Flask-SocketIO==5.3.4
+python-dotenv==1.0.0
+boto3==1.28.25
+certifi==2023.7.22
+pycryptodome==3.18.0
+python-socketio==5.9.0
+simple-websocket
+
+# OAuth 2.0 dependencies
+google-auth==2.23.0
+google-auth-oauthlib==1.1.0
+google-auth-httplib2==0.1.1
+google-api-python-client==2.100.0
+
+# E2EE dependencies
+cryptography==41.0.5
+
+# RBAC/ABAC dependencies
+PyJWT==2.8.0
+PyYAML==6.0.1
