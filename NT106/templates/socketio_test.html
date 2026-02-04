@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SocketIO Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+    <h1>SocketIO Connection Test</h1>
+    <p>Status: <span id="status" style="color: red;">Disconnected</span></p>
+    <p>User: <span id="user"></span></p>
+    
+    <h3>Received Messages:</h3>
+    <div id="messages" style="border: 1px solid #ccc; padding: 10px; min-height: 200px; max-height: 400px; overflow-y: auto;"></div>
+    
+    <h3>Send Test:</h3>
+    <button onclick="sendTest()">Send Test Event to Server</button>
+    
+    <script>
+        const socket = io({
+            transports: ['websocket', 'polling']
+        });
+        
+        socket.on('connect', function() {
+            console.log('Connected! Socket ID:', socket.id);
+            document.getElementById('status').textContent = 'Connected ✅ (ID: ' + socket.id + ')';
+            document.getElementById('status').style.color = 'green';
+        });
+        
+        socket.on('disconnect', function() {
+            console.log('Disconnected');
+            document.getElementById('status').textContent = 'Disconnected ❌';
+            document.getElementById('status').style.color = 'red';
+        });
+        
+        socket.on('new_message', function(data) {
+            console.log('new_message received:', data);
+            const div = document.createElement('div');
+            div.innerHTML = `<b>[${new Date().toLocaleTimeString()}]</b> new_message: ${JSON.stringify(data)}`;
+            div.style.marginBottom = '5px';
+            div.style.padding = '5px';
+            div.style.background = '#e0ffe0';
+            document.getElementById('messages').appendChild(div);
+        });
+        
+        socket.on('test_broadcast', function(data) {
+            console.log('test_broadcast received:', data);
+            const div = document.createElement('div');
+            div.innerHTML = `<b>[${new Date().toLocaleTimeString()}]</b> test_broadcast: ${JSON.stringify(data)}`;
+            div.style.marginBottom = '5px';
+            div.style.padding = '5px';
+            div.style.background = '#ffe0e0';
+            document.getElementById('messages').appendChild(div);
+        });
+        
+        function sendTest() {
+            socket.emit('test_event', {message: 'Hello from client'});
+            console.log('Sent test_event');
+        }
+        
+        // Fetch current user
+        fetch('/api/current_user')
+            .then(r => r.json())
+            .then(d => {
+                document.getElementById('user').textContent = d.email || 'Not logged in';
+            })
+            .catch(e => {
+                document.getElementById('user').textContent = 'Error: ' + e;
+            });
+    </script>
+</body>
+</html>

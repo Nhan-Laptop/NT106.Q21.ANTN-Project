@@ -436,12 +436,23 @@ class Database:
             SELECT message_id, sender, recipient, subject, body, is_encrypted, is_file, timestamp
             FROM messages
             WHERE sender = ? OR recipient = ?
-            ORDER BY timestamp DESC
+            ORDER BY timestamp ASC
             LIMIT ?
         """, (user_email, user_email, limit))
         
         messages = []
         for row in cursor.fetchall():
+            # Convert SQLite timestamp to ISO format for JavaScript
+            timestamp = row[7]
+            if timestamp:
+                try:
+                    from datetime import datetime
+                    # SQLite CURRENT_TIMESTAMP format: 'YYYY-MM-DD HH:MM:SS'
+                    dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                    timestamp = dt.isoformat() + 'Z'  # ISO 8601 format
+                except:
+                    pass  # Keep original if conversion fails
+            
             messages.append({
                 "message_id": row[0],
                 "sender": row[1],
@@ -450,7 +461,7 @@ class Database:
                 "body": row[4],
                 "is_encrypted": row[5],
                 "is_file": row[6],
-                "timestamp": row[7]
+                "timestamp": timestamp
             })
         
         conn.close()

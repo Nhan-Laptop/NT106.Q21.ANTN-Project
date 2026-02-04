@@ -1156,9 +1156,14 @@
             selectConversation(email);
         };
         
-        // Load all messages
+        // Load all messages and refresh current chat
         async function loadMessages() {
             await loadConversations();
+            
+            // Nếu đang mở cuộc hội thoại, refresh chat window
+            if (currentChatEmail && conversations[currentChatEmail]) {
+                loadMessagesForConversation(currentChatEmail);
+            }
         }
         
         // Utility functions
@@ -1196,8 +1201,28 @@
         });
         
         socket.on('new_message', function(data) {
-            console.log('New message:', data);
-            loadMessages();
+            console.log('New message received:', data);
+            
+            // Kiểm tra tin nhắn có liên quan đến user hiện tại không
+            const isRelevant = (data.sender === currentUserEmail || data.recipient === currentUserEmail);
+            
+            if (!isRelevant) {
+                console.log('Message not relevant to current user, ignoring');
+                return;
+            }
+            
+            // Delay 300ms để tin kịp lưu vào DB
+            setTimeout(async function() {
+                await loadConversations();
+                
+                // Nếu đang mở cuộc hội thoại với người gửi/nhận → refresh chat window
+                if (currentChatEmail) {
+                    const otherEmail = data.sender === currentUserEmail ? data.recipient : data.sender;
+                    if (currentChatEmail === otherEmail) {
+                        loadMessagesForConversation(currentChatEmail);
+                    }
+                }
+            }, 300);
         });
         
         // Auto-refresh every 5 seconds

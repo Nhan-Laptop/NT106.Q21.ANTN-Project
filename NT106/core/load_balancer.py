@@ -54,6 +54,8 @@ class LoadBalancer:
             'total_failures': 0,
             'start_time': None
         }
+        # 🔥 STICKY SESSION - Map client IP to backend index
+        self.session_table = {}  # {client_ip: backend_index}
         
     def add_backend(self, host, port, weight=1):
         """Add a backend server to the pool"""
@@ -61,10 +63,15 @@ class LoadBalancer:
         self.backends.append(backend)
         logger.info(f"Added backend: {backend}")
         
-    def get_next_backend(self):
+    def get_next_backend(self, client_ip=None):
         """
-        Round-Robin with Weight support
-        Server với weight=3 sẽ được chọn 3 lần liên tiếp
+        Round-Robin with Weight support + STICKY SESSIONS
+        
+        Args:
+            client_ip: Client IP for sticky session (optional)
+        
+        Returns:
+            Backend server or None
         """
         with self.lock:
             if not self.backends:
@@ -76,7 +83,20 @@ class LoadBalancer:
                 logger.error("No healthy backends available!")
                 return None
             
-            # Weighted Round-Robin
+            # 🔥 STICKY SESSION: Check if client already has a session
+            if client_ip and client_ip in self.session_table:
+                backend_idx = self.session_table[client_ip]
+                if 0 <= backend_idx < len(self.backends):
+                    backend = self.backends[backend_idx]
+                    if backend.healthy:
+                        logger.debug(f"🔗 Sticky session: {client_ip} → {backend.host}:{backend.port}")
+                        return backend
+                    else:
+                        # Backend unhealthy, remove session
+                        del self.session_table[client_ip]
+                        logger.debug(f"🔄 Session expired: {client_ip} (backend unhealthy)")
+            
+            # Weighted Round-Robin for new connections
             # Create weighted list: [server1, server1, server1, server2, server2, ...]
             weighted_list = []
             for backend in healthy_backends:
@@ -86,13 +106,19 @@ class LoadBalancer:
             backend = weighted_list[self.current_backend_index % len(weighted_list)]
             self.current_backend_index += 1
             
+            # 🔥 Save session mapping
+            if client_ip and backend:
+                backend_idx = self.backends.index(backend)
+                self.session_table[client_ip] = backend_idx
+                logger.debug(f"📌 New session: {client_ip} → {backend.host}:{backend.port}")
+            
             return backend
     
     def check_health(self, backend):
         """Health check for a backend server"""
         try:
             url = f"http://{backend.host}:{backend.port}/health"
-            response = requests.get(url, timeout=2)
+            response = requests.get(url, timeout=1)  # Giảm từ 2s xuống 1s
             
             if response.status_code == 200:
                 backend.healthy = True
@@ -125,7 +151,11 @@ class LoadBalancer:
         try:
             # Receive request from client
             request_data = b''
-            client_socket.settimeout(5)
+            client_socket.settimeout(0.5)  # Short timeout - chỉ cần đủ để đọc request
+            
+            content_length = 0
+            headers_complete = False
+            headers_end = 0
             
             while True:
                 try:
@@ -134,31 +164,42 @@ class LoadBalancer:
                         break
                     request_data += chunk
                     
-                    # Check if we have complete HTTP request
-                    if b'\r\n\r\n' in request_data:
-                        # Check Content-Length for POST requests
+                    # Check if we have complete HTTP headers
+                    if not headers_complete and b'\r\n\r\n' in request_data:
+                        headers_complete = True
                         headers_end = request_data.find(b'\r\n\r\n')
                         headers = request_data[:headers_end].decode('utf-8', errors='ignore')
                         
-                        if 'Content-Length:' in headers:
-                            for line in headers.split('\r\n'):
-                                if line.startswith('Content-Length:'):
-                                    content_length = int(line.split(':')[1].strip())
-                                    body_received = len(request_data) - (headers_end + 4)
-                                    
-                                    if body_received >= content_length:
-                                        break
-                        else:
-                            break
+                        # Parse Content-Length
+                        for line in headers.split('\r\n'):
+                            if line.lower().startswith('content-length:'):
+                                content_length = int(line.split(':')[1].strip())
+                                break
+                    
+                    # Check if we have complete request (headers + body)
+                    if headers_complete:
+                        body_received = len(request_data) - (headers_end + 4)
+                        if body_received >= content_length:
+                            break  # ✅ Đã nhận đủ data, thoát ngay!
+                            
                 except socket.timeout:
-                    break
+                    # Timeout chỉ xảy ra khi không còn data để đọc
+                    if headers_complete:
+                        break  # OK, đã có đủ headers
+                    elif request_data:
+                        break  # Có data nhưng không complete, cũng phải xử lý
+                    else:
+                        break  # Không có data gì
             
             if not request_data:
                 client_socket.close()
                 return
             
-            # Get backend server
-            backend = self.get_next_backend()
+            # 🔥 Get client IP for sticky session
+            client_ip = client_addr[0] if client_addr else None
+            
+            # Get backend server with sticky session support
+            backend = self.get_next_backend(client_ip=client_ip)
             if not backend:
                 client_socket.sendall(b'HTTP/1.1 503 Service Unavailable\r\n\r\n')
                 client_socket.close()
@@ -167,7 +208,7 @@ class LoadBalancer:
             
             # Connect to backend
             backend_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            backend_socket.settimeout(10)
+            backend_socket.settimeout(5)  # Giảm từ 10s xuống 5s
             
             try:
                 backend_socket.connect((backend.host, backend.port))

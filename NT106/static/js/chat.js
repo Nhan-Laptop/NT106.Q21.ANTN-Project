@@ -5,6 +5,31 @@ document.addEventListener("DOMContentLoaded", function() {
     const fileNameDisplay = document.getElementById("file-name-display");
     const currentUser = document.getElementById("current-user").innerText;
 
+    // Hàm format thời gian kiểu "X phút trước", "X giờ trước"
+    function formatTimeAgo(timestamp) {
+        if (!timestamp) return 'Không rõ';
+        
+        try {
+            const now = new Date();
+            const msgDate = new Date(timestamp);
+            const diffMs = now - msgDate;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'Vừa xong';
+            if (diffMins < 60) return `${diffMins} phút trước`;
+            if (diffHours < 24) return `${diffHours} giờ trước`;
+            if (diffDays < 7) return `${diffDays} ngày trước`;
+            
+            // Hiển thị ngày/tháng nếu quá 7 ngày
+            return msgDate.toLocaleDateString('vi-VN') + ' ' + msgDate.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit'});
+        } catch (e) {
+            console.error('Error parsing timestamp:', timestamp, e);
+            return timestamp;
+        }
+    }
+
     // Khởi tạo Socket.IO cho real-time messaging
     const socket = io();
     
@@ -14,7 +39,12 @@ document.addEventListener("DOMContentLoaded", function() {
     
     socket.on('new_message', function(data) {
         console.log('New message received:', data);
-        fetchMessages(); // Tải lại tin nhắn khi có tin mới
+        
+        // Fetch lại tin nhắn để đảm bảo sync với DB
+        // Delay 200ms để tin kịp lưu vào DB
+        setTimeout(function() {
+            fetchMessages();
+        }, 200);
     });
 
     // Hiển thị tên file khi chọn ảnh
@@ -52,10 +82,13 @@ document.addEventListener("DOMContentLoaded", function() {
                     // Hiển thị badge nếu tin nhắn được mã hóa
                     const encryptBadge = msg.is_encrypted ? '<span style="color: green; font-size: 11px;">🔒 Encrypted</span>' : '';
 
+                    // Format thời gian kiểu "X phút trước", "X giờ trước"
+                    const timeAgo = formatTimeAgo(msg.timestamp);
+
                     div.innerHTML = `
                         <div class="msg-sender">${msg.sender} ${encryptBadge}</div>
                         <div class="msg-content">${content}</div>
-                        <div class="msg-time" style="font-size: 11px; color: #999; margin-top: 5px;">${new Date(msg.timestamp).toLocaleString()}</div>
+                        <div class="msg-time" style="font-size: 11px; color: #999; margin-top: 5px;">${timeAgo}</div>
                     `;
                     chatBox.appendChild(div);
                 });

@@ -21,22 +21,33 @@ def start_backend_instance(port, tcp_port, instance_id):
     env['TCP_PORT'] = str(tcp_port)
     env['INSTANCE_ID'] = str(instance_id)
     
+    # Open log file for this instance (unbuffered)
+    log_file = open(f'logs/instance_{instance_id}.log', 'w', buffering=1)
+    
     process = subprocess.Popen(
         [sys.executable, 'app.py'],
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stdout=log_file,
+        stderr=subprocess.STDOUT,  # Merge stderr to stdout
+        cwd=os.getcwd()
     )
     
-    processes.append(process)
+    processes.append((process, log_file))
     print(f"✓ Started instance {instance_id} on Flask:{port} TCP:{tcp_port} (PID: {process.pid})")
+    print(f"  Log: logs/instance_{instance_id}.log")
     return process
 
 def signal_handler(sig, frame):
     """Graceful shutdown"""
     print("\n\n🛑 Shutting down cluster...")
-    for process in processes:
-        process.terminate()
+    for item in processes:
+        if isinstance(item, tuple):
+            process, log_file = item
+            process.terminate()
+            log_file.close()
+        else:
+            item.terminate()
+    time.sleep(2)
     sys.exit(0)
 
 def main():
@@ -45,6 +56,9 @@ def main():
     print("  TỰ CODE LOAD BALANCER - KHÔNG XÀI NGINX/HAPROXY")
     print("="*70)
     print()
+    
+    # Create logs directory
+    os.makedirs('logs', exist_ok=True)
     
     # Register signal handler
     signal.signal(signal.SIGINT, signal_handler)
@@ -61,11 +75,11 @@ def main():
     
     for backend in backends:
         start_backend_instance(backend['flask_port'], backend['tcp_port'], backend['id'])
-        time.sleep(1)  # Give time to start
+        time.sleep(2)  # Give more time to start
     
     print()
     print("⏳ Waiting for backends to initialize...")
-    time.sleep(3)
+    time.sleep(5)  # Wait longer for Flask to fully start
     
     # Start HTTP Load Balancer
     print()

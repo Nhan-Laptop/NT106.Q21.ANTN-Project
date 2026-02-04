@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 from flask_socketio import SocketIO, emit, join_room
 from dotenv import load_dotenv
 from functools import wraps
+from datetime import datetime
 import os
 import time
 import threading
@@ -35,7 +36,9 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 db = Database()
 crypto = CryptoManager()
 e2ee = E2EEManager()
-tcp_messenger = TCPMessenger()  # TCP Socket cho messaging
+# TCP Socket cho messaging - sử dụng TCP_PORT từ environment
+tcp_port = int(os.environ.get('TCP_PORT', 9999))
+tcp_messenger = TCPMessenger(port=tcp_port)
 admin_key = AdminKeyManager()  # Master key cho data at rest
 
 # --- [NEW] KHỞI TẠO S3 MANAGER ---
@@ -143,10 +146,15 @@ def handle_disconnect():
 def health_check():
     """
     Health check endpoint cho Load Balancer tự code
-    Kiểm tra trạng thái của Database, TCP Messenger, S3
+    Kiểm tra trạng thái của Database, TCP Messenger
+    
+    ⚡ OPTIMIZED: Không check S3 vì slow (network call)
+    Dùng /health?full=1 để check đầy đủ
     """
     import socket as sock
     from datetime import datetime
+    
+    full_check = request.args.get('full', '0') == '1'
     
     health_status = {
         'status': 'healthy',
@@ -155,7 +163,7 @@ def health_check():
         'services': {}
     }
     
-    # Check Database
+    # Check Database (fast - local SQLite)
     try:
         conn = db.get_connection()
         conn.execute("SELECT 1")
@@ -164,10 +172,10 @@ def health_check():
         health_status['services']['database'] = f'down: {str(e)}'
         health_status['status'] = 'unhealthy'
     
-    # Check TCP Messenger
+    # Check TCP Messenger (fast - local socket)
     try:
         test_sock = sock.socket(sock.AF_INET, sock.SOCK_STREAM)
-        test_sock.settimeout(1)
+        test_sock.settimeout(0.5)  # Giảm timeout từ 1s xuống 0.5s
         tcp_port = int(os.environ.get('TCP_PORT', 9999))
         test_sock.connect(('127.0.0.1', tcp_port))
         test_sock.close()
@@ -176,13 +184,15 @@ def health_check():
         health_status['services']['tcp_messenger'] = f'down: {str(e)}'
         health_status['status'] = 'unhealthy'
     
-    # Check S3 (optional - không critical)
-    try:
-        s3_manager.s3.head_bucket(Bucket=s3_manager.bucket_name)
-        health_status['services']['s3'] = 'up'
-    except Exception as e:
-        health_status['services']['s3'] = f'down: {str(e)}'
-        # S3 down không làm instance unhealthy
+    # Check S3 (SLOW - chỉ check khi full=1)
+    if full_check:
+        try:
+            s3_manager.s3.head_bucket(Bucket=s3_manager.bucket_name)
+            health_status['services']['s3'] = 'up'
+        except Exception as e:
+            health_status['services']['s3'] = f'down: {str(e)}'
+    else:
+        health_status['services']['s3'] = 'skipped (use ?full=1)'
     
     status_code = 200 if health_status['status'] == 'healthy' else 503
     return jsonify(health_status), status_code
@@ -398,13 +408,24 @@ def api_send():
             is_file=is_file
         )
         
-        # 5. Broadcast qua SocketIO cho clients khác
-        socketio.emit('new_message', {
+        # 5. Broadcast qua SocketIO cho TẤT CẢ clients
+        # 6. Broadcast qua SocketIO cho NGƯỜI GỬI và NGƯỜI NHẬN
+        # Sử dụng room-based emit - mỗi user join room = email khi connect
+        message_data = {
             'sender': session['user_email'],
             'recipient': recipient,
             'body': original_body,
-            'subject': subject
-        }, room=recipient)
+            'subject': subject,
+            'timestamp': datetime.now().isoformat() + 'Z'
+        }
+        
+        # Emit vào room của NGƯỜI NHẬN (để họ nhận tin realtime)
+        socketio.emit('new_message', message_data, room=recipient, namespace='/')
+        
+        # Emit vào room của NGƯỜI GỬI (để sync các tab khác của họ)
+        socketio.emit('new_message', message_data, room=session['user_email'], namespace='/')
+        
+        print(f"[SOCKET] Emitted new_message to rooms: {recipient}, {session['user_email']}")
         
         return jsonify({"status": "success"})
     except Exception as e:
@@ -414,36 +435,26 @@ def api_send():
 @app.route('/api/get_messages')
 def api_get_messages():
     """
-    Logic Sync:
-    1. Lấy tin từ TCP message queue
-    2. Lấy tin từ Database (history)
-    3. Merge và return
+    API lấy tất cả tin nhắn của user
+    
+    ⚠️ QUAN TRỌNG - Tránh duplicate:
+    - CHỈ lấy tin từ Database (đã lưu ở api_send)
+    - KHÔNG lưu lại TCP messages vào DB
+    - Tin nhắn đã được lưu 1 lần duy nhất khi gửi
+    
+    Flow:
+    1. User A gửi tin → api_send → Lưu DB + TCP queue + Emit SocketIO
+    2. User B nhận tin → SocketIO trigger → fetchMessages() → Lấy từ DB
+    3. Không cần lưu lại từ TCP queue vì đã có trong DB
     """
     if 'user_email' not in session:
         return jsonify([])
     
     try:
-        # 1. Lấy tin mới từ TCP queue
-        tcp_messages = tcp_messenger.get_messages(session['user_email'], mark_read=True)
-        
-        # Lưu TCP messages vào database
-        import uuid
-        for msg in tcp_messages:
-            msg_id = str(uuid.uuid4())
-            db.save_message(
-                msg_id,
-                msg.get('sender'),
-                msg.get('recipient'),
-                '[Delta-Chat]',
-                msg.get('body'),
-                is_encrypted=msg.get('encrypted', False),
-                is_file=False
-            )
-        
-        # 2. Lấy tin nhắn từ Database (history)
+        # Lấy tin nhắn từ Database (đã deduplicate bằng UNIQUE message_id)
         messages = db.get_all_messages_for_user(session['user_email'], limit=100)
         
-        # 3. Giải mã tin nhắn nếu cần
+        # Giải mã tin nhắn nếu cần
         for msg in messages:
             if msg.get('is_encrypted'):
                 msg['body'] = crypto.decrypt_message_body(msg['body'])
@@ -543,6 +554,25 @@ def admin_export_database(current_user=None):
     }
     
     return jsonify(data)
+
+# ===== CURRENT USER API =====
+
+@app.route('/api/current_user')
+def api_current_user():
+    """API: Lấy thông tin user hiện tại"""
+    if 'user_email' not in session:
+        return jsonify({'email': None, 'logged_in': False})
+    return jsonify({
+        'email': session['user_email'],
+        'logged_in': True
+    })
+
+# ===== SOCKETIO TEST PAGE =====
+
+@app.route('/socketio_test')
+def socketio_test_page():
+    """Test page for debugging SocketIO"""
+    return render_template('socketio_test.html')
 
 # ===== USER DISCOVERY API =====
 
