@@ -143,24 +143,6 @@ pkill -9 -f "run_cluster"
 
 ---
 
-## 🎯 Demo Cho Giáo Viên
-
-### **Q: "Em có xài Nginx không?"**
-
-```bash
-pgrep nginx  # → (không có kết quả)
-wc -l core/load_balancer.py  # → 414 lines TỰ CODE
-```
-
-### **Q: "Algorithm là gì?"**
-
-> "Em tự implement Weighted Round-Robin với weight 3:2:1, phân phối traffic 50%-33%-17%."
-
-### **Q: "Tại sao không dùng Nginx?"**
-
-> "TỰ CODE để hiểu sâu Load Balancing. Nginx chỉ là config, không thể hiện khả năng lập trình hệ thống."
-
----
 
 ## 📖 Tài Liệu Chi Tiết
 
@@ -172,16 +154,4 @@ Xem [REPORT.md](REPORT.md) để biết thêm chi tiết về:
 
 ---
 
-## 🏆 Kết Luận
 
-**✅ TỰ CODE 100%**
-- 414 lines Custom Load Balancer
-- KHÔNG dùng Nginx/HAProxy
-- Weighted Round-Robin tự implement
-- Health check + Sticky sessions tự viết
-
-**→ ĐIỂM CAO!** 🎉
-
----
-
-**Last Updated:** February 4, 2026
