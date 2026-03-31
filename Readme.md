@@ -151,7 +151,7 @@ Xem [REPORT.md](REPORT.md) để biết thêm chi tiết về:
 - Data Flow Workflow (OSI/TCP-IP layers)
 - E2EE implementation
 - Load Balancer design
-
+https://drive.google.com/drive/folders/1lK72gi-jH3zmg84ELWL_z20z34rmChaB
 ---
 
 
